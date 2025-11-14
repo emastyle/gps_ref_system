@@ -1,7 +1,7 @@
 /*********************************************************************
-Simple GPS System - SCULLCOM derived version
+GPS REF System - Derived from SCULLCOM version
 Adapted for OLED SSD1306 (128x64 I2C)
-With LED fix indicator, satellite icon, NMEA debug output
+With LED fix indicator, NMEA debug output
 *********************************************************************/
 
 // --- Include libraries ---
@@ -11,7 +11,7 @@ With LED fix indicator, satellite icon, NMEA debug output
 #include <SoftwareSerial.h>
 #include <TinyGPS.h>
 
-// --- Prototipi delle funzioni ---
+// --- Function prototypes ---
 void handleLedStatus(bool hasFix);
 bool feedgps();
 void gpsdump(TinyGPS &gps, bool hasFix);
@@ -32,11 +32,6 @@ static void print_date(TinyGPS &gps);
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 TinyGPS gps;
 SoftwareSerial nss(3, 4);  // D3 = RX, D4 = TX (optional)
-
-
-// --- LED blink state ---
-bool ledState = false;
-unsigned long lastBlink = 0;
 
 bool hasSatFixed() {
   float lat, lon;
@@ -64,7 +59,7 @@ bool hasSatFixed() {
 // --- LED handling ---
 void handleLedStatus(bool hasFix) {
   if (hasFix) {
-    digitalWrite(LED_PIN, HIGH); // steady ON when fix
+    digitalWrite(LED_PIN, HIGH);
   } else {
     digitalWrite(LED_PIN, LOW); 
   }
@@ -109,7 +104,7 @@ void loop() {
   static unsigned long lastGpsUpdate = 0;
   static bool newdata = false;
 
-  // Always handle LED (non-blocking)
+  // LED handler
   bool hasFix = hasSatFixed();
   handleLedStatus(hasFix);
 
@@ -117,9 +112,9 @@ void loop() {
   if (feedgps())
     newdata = true;
 
-  // Every 1 second, refresh display with same fix status as LED
+  // Every 1 second, refresh display
   if (millis() - lastGpsUpdate >= 1000) {
-    gpsdump(gps, hasFix); // Pass the same hasFix value used for LED
+    gpsdump(gps, hasFix);
     if (newdata) {
       newdata = false;
     } else {
@@ -194,7 +189,7 @@ void displayGpsData(TinyGPS &gps) {
   display.print(F("Lon: "));
   display.print(flon, 4);
 
-    // Satellites
+  // Satellites
   display.setCursor(0, 48);
   display.print(F("Sats: "));
   display.println(gps.satellites());
