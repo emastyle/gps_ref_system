@@ -12,9 +12,11 @@ With LED fix indicator, satellite icon, NMEA debug output
 #include <TinyGPS.h>
 
 // --- Prototipi delle funzioni ---
-void handleLedStatus();
+void handleLedStatus(bool hasFix);
 bool feedgps();
-void gpsdump(TinyGPS &gps);
+void gpsdump(TinyGPS &gps, bool hasFix);
+void displayGpsData(TinyGPS &gps);
+void displayWaitingMessage(TinyGPS &gps);
 static void print_date(TinyGPS &gps);
 
 // --- Display configuration ---
@@ -32,15 +34,11 @@ TinyGPS gps;
 SoftwareSerial nss(3, 4);  // D3 = RX, D4 = TX (optional)
 
 
-
-
-
 // --- LED blink state ---
 bool ledState = false;
 unsigned long lastBlink = 0;
 
-// --- LED handling ---
-void handleLedStatus() {
+bool hasSatFixed() {
   float lat, lon;
   unsigned long fix_age, time_age;
   
@@ -60,7 +58,11 @@ void handleLedStatus() {
   bool hasSatellites = (sats != TinyGPS::GPS_INVALID_SATELLITES && sats >= 4);
   
   // 4. All conditions must be true for a valid fix
-  bool hasFix = hasValidCoords && hasFreshData && hasSatellites;
+  return hasValidCoords && hasFreshData && hasSatellites;
+}
+
+// --- LED handling ---
+void handleLedStatus(bool hasFix) {
   if (hasFix) {
     digitalWrite(LED_PIN, HIGH); // steady ON when fix
   } else {
@@ -93,7 +95,7 @@ void setup() {
 
   display.setTextSize(1);
   display.setCursor(0, 18);
-  display.println(F("EMANUELE GIAN"));
+  display.println(F("EMANUELE GIAN - 2025"));
 
   display.setCursor(0, 30);
   display.println(F("Initialising..."));
@@ -108,16 +110,17 @@ void loop() {
   static bool newdata = false;
 
   // Always handle LED (non-blocking)
-  handleLedStatus();
+  bool hasFix = hasSatFixed();
+  handleLedStatus(hasFix);
 
   // Continuously feed GPS data
   if (feedgps())
     newdata = true;
 
-  // Every 1 second, refresh display
+  // Every 1 second, refresh display with same fix status as LED
   if (millis() - lastGpsUpdate >= 1000) {
+    gpsdump(gps, hasFix); // Pass the same hasFix value used for LED
     if (newdata) {
-      gpsdump(gps);
       newdata = false;
     } else {
       Serial.println(F("No valid GPS data yet..."));
@@ -127,96 +130,93 @@ void loop() {
 }
 
 // --- Print GPS data on OLED ---
-void gpsdump(TinyGPS &gps) {
-  float flat, flon;
-  unsigned long fix_age, time_age;
-  
-  gps.f_get_position(&flat, &flon, &fix_age);
-  gps.get_datetime(NULL, NULL, &time_age);
-
-  // Check multiple conditions for a valid GPS fix:
-  // 1. Valid coordinates (not invalid angles)
-  bool hasValidCoords = !(flat == TinyGPS::GPS_INVALID_F_ANGLE ||
-                         flon == TinyGPS::GPS_INVALID_F_ANGLE);
-  
-  // 2. Fresh GPS data (fix age less than 5 seconds)
-  bool hasFreshData = (fix_age != TinyGPS::GPS_INVALID_AGE && fix_age < 5000);
-  
-  // 3. Sufficient satellites (at least 4 for reliable 3D fix)
-  unsigned char sats = gps.satellites();
-  bool hasSatellites = (sats != TinyGPS::GPS_INVALID_SATELLITES && sats >= 4);
-  
-  // 4. All conditions must be true for a valid fix
-  bool hasFix = hasValidCoords && hasFreshData && hasSatellites;
-
+void gpsdump(TinyGPS &gps, bool hasFix) {
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
 
-  // Use the same fix logic as LED - must have ALL conditions true
-  bool hasValidData = hasValidCoords && hasFreshData && hasSatellites;
-
-  if (hasValidData) {
-    // Show GPS data when we have a fix
-    // Date/time
-    display.setCursor(0, 0);
-    print_date(gps);
-
-    // Altitude
-    display.setCursor(0, 18);
-    display.print(F("Altitude : "));
-    display.print(gps.f_altitude());
-    display.println(F(" m"));
-
-    // Satellites
-    display.setCursor(0, 28);
-    display.print(F("Sats     : "));
-    display.println(gps.satellites());
-
-    // Latitude
-    display.setCursor(0, 38);
-    display.print(F("Lat: "));
-    display.print(flat, 4);
-
-    // Longitude  
-    display.setCursor(0, 48);
-    display.print(F("Lon: "));
-    display.print(flon, 4);
+  if (hasFix) {
+    displayGpsData(gps);
   } else {
-    // Show waiting message when no fix
-    display.setTextSize(1);
-    display.setCursor(5, 20);
-    display.println(F("Waiting for"));
-    display.setCursor(5, 30);
-    display.println(F("satellites lock..."));
-    
-    // Show satellite count to indicate progress
-    display.setCursor(25, 50);
-    display.print(F("Sats: "));
-    if (sats != TinyGPS::GPS_INVALID_SATELLITES) {
-      display.println(sats);
-    } else {
-      display.println(F("0"));
-    }
+    displayWaitingMessage(gps);
   }
 
   // Clear any remaining area at bottom of screen to remove artifacts
   display.fillRect(0, 56, 128, 8, SSD1306_BLACK);
-
   display.display();
 
   // --- Serial debug output ---
+  float flat, flon;
+  unsigned long fix_age, time_age;
+  gps.f_get_position(&flat, &flon, &fix_age);
+  gps.get_datetime(NULL, NULL, &time_age);
+  unsigned char sats = gps.satellites();
+  
+  bool hasValidCoords = !(flat == TinyGPS::GPS_INVALID_F_ANGLE || flon == TinyGPS::GPS_INVALID_F_ANGLE);
+  bool hasFreshData = (fix_age != TinyGPS::GPS_INVALID_AGE && fix_age < 5000);
+  bool hasSatellites = (sats != TinyGPS::GPS_INVALID_SATELLITES && sats >= 4);
+  
   Serial.println(F("------ GPS DATA ------"));
   Serial.print(F("Satellites: ")); Serial.println(sats);
-  Serial.print(F("Altitude  : ")); Serial.print(gps.f_altitude()); Serial.println(F(" m"));
   Serial.print(F("Latitude  : ")); Serial.println(flat, 6);
   Serial.print(F("Longitude : ")); Serial.println(flon, 6);
   Serial.print(F("Fix age   : ")); Serial.print(fix_age); Serial.println(F(" ms"));
   Serial.print(F("Valid coords: ")); Serial.println(hasValidCoords ? F("YES") : F("NO"));
   Serial.print(F("Fresh data  : ")); Serial.println(hasFreshData ? F("YES") : F("NO"));
   Serial.print(F("Enough sats : ")); Serial.println(hasSatellites ? F("YES") : F("NO"));
-  Serial.print(F("Fix status  : ")); Serial.println(hasFix ? F("FIXED") : F("NO FIX"));
+  Serial.print(F("Fix status  : ")); Serial.println(hasSatFixed() ? F("FIXED") : F("NO FIX"));
   Serial.println(F("----------------------"));
+}
+
+// --- Display GPS data when fixed ---
+void displayGpsData(TinyGPS &gps) {
+  float flat, flon;
+  unsigned long fix_age;
+  gps.f_get_position(&flat, &flon, &fix_age);
+
+  // Date/time
+  display.setCursor(0, 0);
+  print_date(gps);
+
+  // Altitude
+  display.setCursor(0, 18);
+  display.print(F("Altitude: "));
+  display.print(gps.f_altitude());
+  display.println(F(" m"));
+
+  // Latitude
+  display.setCursor(0, 28);
+  display.print(F("Lat: "));
+  display.print(flat, 4);
+
+  // Longitude  
+  display.setCursor(0, 38);
+  display.print(F("Lon: "));
+  display.print(flon, 4);
+
+    // Satellites
+  display.setCursor(0, 48);
+  display.print(F("Sats: "));
+  display.println(gps.satellites());
+}
+
+// --- Display waiting message when no fix ---
+void displayWaitingMessage(TinyGPS &gps) {
+  unsigned char sats = gps.satellites();
+  
+  display.setCursor(5, 18);
+  display.println(F("Waiting for"));
+  display.setCursor(5, 28);
+  display.println(F("satellites..."));
+  
+  // Show satellite count to indicate progress
+  display.setCursor(5, 40);
+  display.print(F("Sats: "));
+  if (sats != TinyGPS::GPS_INVALID_SATELLITES) {
+    display.println(sats);
+  } else {
+    display.println(F("0"));
+  }
 }
 
 // --- Read GPS and echo raw NMEA data ---
