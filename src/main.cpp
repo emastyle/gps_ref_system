@@ -45,12 +45,12 @@ bool hasSatFixed() {
   bool hasValidCoords = !(lat == TinyGPS::GPS_INVALID_F_ANGLE ||
                          lon == TinyGPS::GPS_INVALID_F_ANGLE);
   
-  // 2. Fresh GPS data (fix age less than 5 seconds)
-  bool hasFreshData = (fix_age != TinyGPS::GPS_INVALID_AGE && fix_age < 5000);
+  // 2. Fresh GPS data (fix age less than 10 seconds - more lenient)
+  bool hasFreshData = (fix_age != TinyGPS::GPS_INVALID_AGE && fix_age < 10000);
   
-  // 3. Sufficient satellites (at least 4 for reliable 3D fix)
+  // 3. Sufficient satellites (at least 3 for basic fix - more lenient)
   unsigned char sats = gps.satellites();
-  bool hasSatellites = (sats != TinyGPS::GPS_INVALID_SATELLITES && sats >= 4);
+  bool hasSatellites = (sats != TinyGPS::GPS_INVALID_SATELLITES && sats >= 3);
   
   // 4. All conditions must be true for a valid fix
   return hasValidCoords && hasFreshData && hasSatellites;
@@ -148,8 +148,8 @@ void gpsdump(TinyGPS &gps, bool hasFix) {
   unsigned char sats = gps.satellites();
   
   bool hasValidCoords = !(flat == TinyGPS::GPS_INVALID_F_ANGLE || flon == TinyGPS::GPS_INVALID_F_ANGLE);
-  bool hasFreshData = (fix_age != TinyGPS::GPS_INVALID_AGE && fix_age < 5000);
-  bool hasSatellites = (sats != TinyGPS::GPS_INVALID_SATELLITES && sats >= 4);
+  bool hasFreshData = (fix_age != TinyGPS::GPS_INVALID_AGE && fix_age < 10000);
+  bool hasSatellites = (sats != TinyGPS::GPS_INVALID_SATELLITES && sats >= 3);
   
   Serial.println(F("------ GPS DATA ------"));
   Serial.print(F("Satellites: ")); Serial.println(sats);
