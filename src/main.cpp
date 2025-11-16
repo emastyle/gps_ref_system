@@ -92,7 +92,7 @@ void setup() {
   display.setCursor(0, 18);
   display.println(F("EMANUELE GIAN - 2025"));
 
-  display.setCursor(0, 30);
+  display.setCursor(0, 40);
   display.println(F("Initialising..."));
 
   display.display();
@@ -156,6 +156,29 @@ void gpsdump(TinyGPS &gps, bool hasFix) {
   Serial.print(F("Latitude  : ")); Serial.println(flat, 6);
   Serial.print(F("Longitude : ")); Serial.println(flon, 6);
   Serial.print(F("Fix age   : ")); Serial.print(fix_age); Serial.println(F(" ms"));
+  
+  /**
+   * HDOP precision indicator
+   * EXC = EXCELLENT (< 2.0m accurancy)
+   * GOOD = GOOD (2.0m-5.0m accuracy)
+   * MOD = MODERATE (5.0m-10.0m accuracy)
+   * POOR = POOR (> 10.0m accuracy)
+   * N/A = No HDOP data available
+   */
+  unsigned long hdop = gps.hdop();
+  Serial.print(F("HDOP      : "));
+  if (hdop != TinyGPS::GPS_INVALID_HDOP) {
+    Serial.print(hdop / 100.0, 2);
+    Serial.print(F(" ("));
+    if (hdop < 200) Serial.print(F("EXCELLENT"));
+    else if (hdop < 500) Serial.print(F("GOOD"));
+    else if (hdop < 1000) Serial.print(F("MODERATE"));
+    else Serial.print(F("POOR"));
+    Serial.println(F(")"));
+  } else {
+    Serial.println(F("INVALID"));
+  }
+  
   Serial.print(F("Valid coords: ")); Serial.println(hasValidCoords ? F("YES") : F("NO"));
   Serial.print(F("Fresh data  : ")); Serial.println(hasFreshData ? F("YES") : F("NO"));
   Serial.print(F("Enough sats : ")); Serial.println(hasSatellites ? F("YES") : F("NO"));
@@ -169,30 +192,50 @@ void displayGpsData(TinyGPS &gps) {
   unsigned long fix_age;
   gps.f_get_position(&flat, &flon, &fix_age);
 
-  // Date/time
+  // Satellites and Age (top line)
   display.setCursor(0, 0);
+  display.print(F("Sats: "));
+  display.print(gps.satellites());
+  display.print(F("  Age: "));
+  display.print(fix_age / 1000.0, 1);
+  display.print(F("s"));
+
+  // HDOP precision with quality rating (second line)
+  display.setCursor(0, 9);
+  display.print(F("HDOP: "));
+  unsigned long hdop = gps.hdop();
+  if (hdop != TinyGPS::GPS_INVALID_HDOP) {
+    display.print(hdop / 100.0, 1);
+    display.setCursor(90, 9);
+    if (hdop < 200) display.print(F("EXC"));
+    else if (hdop < 500) display.print(F("GOOD"));
+    else if (hdop < 1000) display.print(F("MOD"));
+    else display.print(F("POOR"));
+  } else {
+    display.print(F("--"));
+    display.setCursor(90, 9);
+    display.print(F("N/A"));
+  }
+
+  // Date/time
+  display.setCursor(0, 18);
   print_date(gps);
 
   // Altitude
-  display.setCursor(0, 18);
+  display.setCursor(0, 27);
   display.print(F("Altitude: "));
   display.print(gps.f_altitude());
   display.println(F(" m"));
 
   // Latitude
-  display.setCursor(0, 28);
+  display.setCursor(0, 36);
   display.print(F("Lat: "));
   display.print(flat, 4);
 
   // Longitude  
-  display.setCursor(0, 38);
+  display.setCursor(0, 45);
   display.print(F("Lon: "));
   display.print(flon, 4);
-
-  // Satellites
-  display.setCursor(0, 48);
-  display.print(F("Sats: "));
-  display.println(gps.satellites());
 }
 
 // --- Display waiting message when no fix ---
