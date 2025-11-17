@@ -40,20 +40,20 @@ bool hasSatFixed() {
   gps.f_get_position(&lat, &lon, &fix_age);
   gps.get_datetime(NULL, NULL, &time_age);
 
-  // Check multiple conditions for a valid GPS fix:
-  // 1. Valid coordinates (not invalid angles)
+  // Simplified GPS fix detection (works around TinyGPS parsing issues):
+  // 1. Valid coordinates (not invalid angles or default values)
   bool hasValidCoords = !(lat == TinyGPS::GPS_INVALID_F_ANGLE ||
-                         lon == TinyGPS::GPS_INVALID_F_ANGLE);
+                         lon == TinyGPS::GPS_INVALID_F_ANGLE ||
+                         lat == 1000.0 || lon == 1000.0);
   
-  // 2. Fresh GPS data (fix age less than 10 seconds - more lenient)
-  bool hasFreshData = (fix_age != TinyGPS::GPS_INVALID_AGE && fix_age < 10000);
+  // 2. Fresh GPS data (fix age is valid and reasonable)
+  bool hasFreshData = (fix_age != TinyGPS::GPS_INVALID_AGE && 
+                      fix_age != 4294967295UL && 
+                      fix_age < 30000);
   
-  // 3. Sufficient satellites (at least 3 for basic fix - more lenient)
-  unsigned char sats = gps.satellites();
-  bool hasSatellites = (sats != TinyGPS::GPS_INVALID_SATELLITES && sats >= 3);
-  
-  // 4. All conditions must be true for a valid fix
-  return hasValidCoords && hasFreshData && hasSatellites;
+  // Focus on valid coordinates and fresh data only
+  // (Removed satellite count check due to TinyGPS parsing issues)
+  return hasValidCoords && hasFreshData;
 }
 
 // --- LED handling ---
@@ -196,7 +196,7 @@ void displayGpsData(TinyGPS &gps) {
   display.setCursor(0, 0);
   display.print(F("Sats: "));
   display.print(gps.satellites());
-  display.print(F("  Age: "));
+  display.print(F("   Age: "));
   display.print(fix_age / 1000.0, 1);
   display.print(F("s"));
 
@@ -206,10 +206,10 @@ void displayGpsData(TinyGPS &gps) {
   unsigned long hdop = gps.hdop();
   if (hdop != TinyGPS::GPS_INVALID_HDOP) {
     display.print(hdop / 100.0, 1);
-    display.setCursor(90, 9);
-    if (hdop < 200) display.print(F("EXC"));
+    display.setCursor(64, 9);
+    if (hdop < 200) display.print(F("EXCELENT"));
     else if (hdop < 500) display.print(F("GOOD"));
-    else if (hdop < 1000) display.print(F("MOD"));
+    else if (hdop < 1000) display.print(F("MODERATE"));
     else display.print(F("POOR"));
   } else {
     display.print(F("--"));
