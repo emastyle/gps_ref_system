@@ -28,6 +28,9 @@ static void print_date(TinyGPS &gps);
 // --- LED pin ---
 #define LED_PIN 7   // LED indicator pin
 
+// --- Debug: set to 1 to echo raw NMEA bytes on Serial ---
+#define DEBUG_RAW 1
+
 // --- Global objects ---
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 TinyGPS gps;
@@ -48,12 +51,9 @@ bool hasSatFixed() {
   // 2. Fresh GPS data (fix age less than 10 seconds - more lenient)
   bool hasFreshData = (fix_age != TinyGPS::GPS_INVALID_AGE && fix_age < 10000);
   
-  // 3. Sufficient satellites (at least 3 for basic fix - more lenient)
-  unsigned char sats = gps.satellites();
-  bool hasSatellites = (sats != TinyGPS::GPS_INVALID_SATELLITES && sats >= 3);
-  
-  // 4. All conditions must be true for a valid fix
-  return hasValidCoords && hasFreshData && hasSatellites;
+  // 3. All conditions must be true for a valid fix
+  // Note: satellite count (from $GPGGA) is NOT required - module may only send $GPRMC
+  return hasValidCoords && hasFreshData;
 }
 
 // --- LED handling ---
@@ -144,9 +144,21 @@ void gpsdump(TinyGPS &gps, bool hasFix) {
   gps.f_get_position(&flat, &flon, &fix_age);
   unsigned char sats = gps.satellites();
 
-  Serial.print(F("Sats:")); Serial.print(sats);
+  unsigned long chars;
+  unsigned short sentences, failedCS;
+  gps.stats(&chars, &sentences, &failedCS);
+
+  Serial.print(F("RawBytes:")); Serial.print(chars);
+  Serial.print(F(" FixSent:")); Serial.print(sentences);  // only counts sentences WITH valid position
+  Serial.print(F(" BadCS:")); Serial.print(failedCS);
+  Serial.print(F(" Sats:")); Serial.print(sats);
   Serial.print(F(" Age:")); Serial.print(fix_age);
   Serial.print(F("ms Fix:")); Serial.println(hasFix ? F("YES") : F("NO"));
+
+  if (chars == 0)
+    Serial.println(F("*** NO DATA FROM GPS - check wiring/baud rate ***"));
+  else if (sentences == 0)
+    Serial.println(F("--- Signal OK, waiting for position fix (move to window/outdoors) ---"));
 }
 
 // --- Display GPS data when fixed ---
@@ -178,7 +190,11 @@ void displayGpsData(TinyGPS &gps) {
   // Satellites
   display.setCursor(0, 48);
   display.print(F("Sats: "));
-  display.print(gps.satellites());
+  unsigned char satsF = gps.satellites();
+  if (satsF != TinyGPS::GPS_INVALID_SATELLITES)
+    display.print(satsF);
+  else
+    display.print(F("?"));
 
   // Uptime
   unsigned long up = millis() / 1000;
@@ -202,11 +218,10 @@ void displayWaitingMessage(TinyGPS &gps) {
   // Show satellite count to indicate progress
   display.setCursor(5, 40);
   display.print(F("Sats: "));
-  if (sats != TinyGPS::GPS_INVALID_SATELLITES) {
+  if (sats != TinyGPS::GPS_INVALID_SATELLITES)
     display.print(sats);
-  } else {
-    display.print(F("0"));
-  }
+  else
+    display.print(F("?"));
 
   // Uptime
   unsigned long up = millis() / 1000;
@@ -224,6 +239,10 @@ bool feedgps() {
 
   while (nss.available()) {
     char c = nss.read();
+
+#if DEBUG_RAW
+    Serial.write(c);  // echo raw NMEA to Serial Monitor
+#endif
 
     // TinyGPS decode
     if (gps.encode(c))
